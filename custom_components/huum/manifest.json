@@ -1,0 +1,9 @@
+{
+  "domain": "huum",
+  "name": "Huum",
+  "config_flow": true,
+  "documentation": "https://github.com/mtanasiewicz/huum",
+  "requirements": ["huum==0.5.0"],
+  "codeowners": ["@frwickst", "@mtanasiewicz"],
+  "iot_class": "cloud_polling"
+}
