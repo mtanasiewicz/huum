@@ -5,3 +5,5 @@ from homeassistant.const import Platform
 DOMAIN = "huum"
 
 PLATFORMS = [Platform.CLIMATE]
+CONF_USERNAME = "username"
+CONF_PASSWORD = "password"

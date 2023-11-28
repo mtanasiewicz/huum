@@ -1,50 +1,29 @@
 """Support for Huum wifi-enabled sauna."""
 from __future__ import annotations
-
-import logging
+import logging, uuid
 from typing import Any
-
-from huum.const import SaunaStatus
-from huum.exceptions import SafetyException
-from huum.huum import Huum
-from huum.schemas import HuumStatusResponse
-
+from .huum import Huum,SaunaStatus, SafetyException
+from .schemas import HuumStatusResponse
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import ClimateEntityFeature, HVACMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
-    CONF_PASSWORD,
-    CONF_USERNAME,
     PRECISION_WHOLE,
     TEMP_CELSIUS,
 )
+from .const import DOMAIN
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import PlatformNotReady
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the Huum sauna with config flow."""
-    _huum_handler = Huum(
-        entry.data[CONF_USERNAME],
-        entry.data[CONF_PASSWORD],
-        session=async_get_clientsession(hass),
-    )
-
-    try:
-        entry_status = await _huum_handler.status_from_status_or_stop()
-    except Exception as status_error:
-        raise PlatformNotReady(status_error) from status_error
-
-    async_add_entities([HuumDevice(entry_status, _huum_handler)])
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the Huum sauna from the config entry."""
+    _LOGGER.debug("Setting up Huum sauna entity for entry %s", entry.entry_id)
+    huum_data = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([HuumDevice(huum_data["status"], huum_data["handler"], entry.title)])
 
 
 class HuumDevice(ClimateEntity):
@@ -59,19 +38,27 @@ class HuumDevice(ClimateEntity):
 
     _target_temperature = 40
 
-    def __init__(self, status: HuumStatusResponse, _huum_handler: Huum) -> None:
+    def __init__(self, status: HuumStatusResponse, _huum_handler: Huum, title: str) -> None:
         """Initialize the heater."""
+        _LOGGER.debug("Initializing Huum Sauna Device")
         self._status = status
         self._huum_handler = _huum_handler
+
+        uuid_generated = str(uuid.uuid5(uuid.NAMESPACE_URL, title))
+        self._title = f"huum_{uuid_generated}"
 
     @property
     def name(self) -> str:
         """Return the name of the device, if any."""
-        return "Huum Sauna"
+        return self._title
+
+    @property
+    def unique_id(self) -> str:
+        return self._title
 
     @property
     def hvac_mode(self) -> str:
-        """Return hvac operation ie. heat, cool mode."""
+        """Return hvac operation ie: heat, cool mode."""
         if self._status.status == SaunaStatus.ONLINE_HEATING:
             return HVACMode.HEAT
         return HVACMode.OFF
@@ -96,6 +83,7 @@ class HuumDevice(ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: str) -> None:
         """Set hvac mode."""
+        _LOGGER.debug("Setting HVAC mode to %s", hvac_mode)
         if hvac_mode == HVACMode.HEAT:
             temperature = max(self.min_temp, self.target_temperature)
             await self._turn_on(temperature)
@@ -104,6 +92,7 @@ class HuumDevice(ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
+        _LOGGER.debug("Setting new target temperature: %s", kwargs.get(ATTR_TEMPERATURE))
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
@@ -122,10 +111,12 @@ class HuumDevice(ClimateEntity):
         return the target temperature of a sauna that is off, even if it can have
         a target temperature at that time.
         """
+        _LOGGER.debug("Updating Huum Sauna status")
         self._status = await self._huum_handler.status_from_status_or_stop()
 
     async def _turn_on(self, temperature) -> None:
+        _LOGGER.debug("Turning on Huum Sauna with temperature %s", temperature)
         try:
             await self._huum_handler.turn_on(temperature)
         except (ValueError, SafetyException) as turn_on_error:
-            _LOGGER.error(str(turn_on_error))
+            _LOGGER.error("Error turning on Huum Sauna: %s", str(turn_on_error))

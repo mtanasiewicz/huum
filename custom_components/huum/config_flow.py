@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 import aiohttp
-from huum.huum import Huum
+from .huum import Huum
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -65,8 +65,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             await validate_input(self.hass, user_input)
         except CannotConnect:
+            _LOGGER.exception("Cannot connect")
             errors["base"] = "cannot_connect"
         except InvalidAuth:
+            _LOGGER.exception("Invalid auth")
             errors["base"] = "invalid_auth"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Unexpected exception")
